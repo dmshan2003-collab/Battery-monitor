@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Battery Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h2>Battery Monitor</h2>
+  <p id="status"></p>
+  <canvas id="batteryChart"></canvas>
+
+  <script>
+    async function fetchData() {
+      let res = await fetch("data.json");
+      let data = await res.json();
+      let times = data.map(d => d.time);
+      let values = data.map(d => d.battery);
+
+      document.getElementById("status").innerText =
+        "Battery: " + values[values.length-1] + "% | Charging: " + data[data.length-1].charging;
+
+      new Chart(document.getElementById("batteryChart"), {
+        type: "line",
+        data: {
+          labels: times,
+          datasets: [{label: "Battery %", data: values, fill: false, borderColor: "blue"}]
+        }
+      });
+    }
+    setInterval(fetchData, 5000);
+    fetchData();
+  </script>
+</body>
+</html>
