@@ -1,37 +1,156 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Battery Monitor</title>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js"></script>
+
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #74ebd5 0%, #9face6 100%);
+      color: #fff;
+      text-align: center;
+    }
+    header {
+      padding: 20px;
+      font-size: 2em;
+      font-weight: bold;
+    }
+    .card {
+      background: rgba(0,0,0,0.5);
+      margin: 20px auto;
+      padding: 20px;
+      border-radius: 15px;
+      max-width: 500px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    .status {
+      font-size: 1.5em;
+      margin-top: 10px;
+    }
+    .battery-bar {
+      width: 100%;
+      background: #333;
+      border-radius: 10px;
+      margin: 15px 0;
+      height: 30px;
+      overflow: hidden;
+    }
+    .battery-fill {
+      height: 100%;
+      background: limegreen;
+      width: 0%;
+      text-align: center;
+      line-height: 30px;
+      color: #000;
+      font-weight: bold;
+      transition: width 0.5s;
+    }
+    canvas {
+      margin: 20px auto;
+      max-width: 500px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 10px;
+    }
+  </style>
 </head>
 <body>
-  <h2>Battery Monitor</h2>
-  <p id="status"></p>
-  <canvas id="batteryChart"></canvas>
+  <header>🔋 Smart Battery Monitor</header>
+
+  <div class="card">
+    <div id="status" class="status">Loading...</div>
+    <div class="battery-bar">
+      <div id="batteryFill" class="battery-fill">0%</div>
+    </div>
+    <p id="voltage">0 V</p>
+  </div>
+
+  <canvas id="batteryChart" width="400" height="200"></canvas>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js"></script>
 
   <script>
-    async function fetchData() {
-      let res = await fetch("data.json");
-      let data = await res.json();
-      let times = data.map(d => d.time);
-      let values = data.map(d => d.battery);
+    // 🔹 Replace this with your Firebase config from Firebase Console
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
 
-      document.getElementById("status").innerText =
-        "Battery: " + values[values.length-1] + "% | Charging: " + data[data.length-1].charging;
+    // Initialize Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-      new Chart(document.getElementById("batteryChart"), {
-        type: "line",
-        data: {
-          labels: times,
-          datasets: [{label: "Battery %", data: values, fill: false, borderColor: "blue"}]
+    // Chart.js setup
+    const ctx = document.getElementById('batteryChart').getContext('2d');
+    const batteryChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Battery %',
+          data: [],
+          borderColor: '#00ffcc',
+          backgroundColor: 'rgba(0,255,204,0.2)',
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Time' } },
+          y: { title: { display: true, text: 'Battery %' }, min: 0, max: 100 }
         }
-      });
-    }
-    setInterval(fetchData, 5000);
-    fetchData();
+      }
+    });
+
+    // Update UI when Firebase data changes
+    db.ref("batteryStatus").on("value", (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        let battery = data.battery || 0;
+        let voltage = data.voltage || 0;
+        let charging = data.charging;
+
+        // Update battery bar
+        const batteryFill = document.getElementById("batteryFill");
+        batteryFill.style.width = battery + "%";
+        batteryFill.textContent = battery + "%";
+
+        // Update voltage
+        document.getElementById("voltage").innerText = voltage.toFixed(2) + " V";
+
+        // Update status
+        document.getElementById("status").innerText = charging ? "⚡ Charging" : "🔋 Not Charging";
+
+        // Update chart
+        const now = new Date().toLocaleTimeString();
+        batteryChart.data.labels.push(now);
+        batteryChart.data.datasets[0].data.push(battery);
+        if (batteryChart.data.labels.length > 20) {
+          batteryChart.data.labels.shift();
+          batteryChart.data.datasets[0].data.shift();
+        }
+        batteryChart.update();
+      }
+    });
   </script>
 </body>
 </html>
