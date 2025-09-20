@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Battery Monitor</title>
+  <title>Smart Battery Monitor</title>
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
@@ -23,54 +23,62 @@
     }
     header {
       padding: 20px;
-      font-size: 2em;
+      font-size: 2.5em;
       font-weight: bold;
       animation: fadeInDown 1s ease-in-out;
     }
     .card {
       background: rgba(0,0,0,0.5);
       margin: 20px auto;
-      padding: 20px;
+      padding: 25px;
       border-radius: 15px;
       max-width: 500px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.4);
       animation: popUp 1.2s ease-in-out;
     }
     .status {
-      font-size: 1.5em;
+      font-size: 1.6em;
       margin-top: 10px;
-      animation: glow 2s infinite alternate;
+      transition: all 0.3s ease;
+    }
+    .status.charging {
+      color: #00ffcc;
+      text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc;
+      animation: glowPulse 1.5s infinite alternate;
+    }
+    .status.not-charging {
+      color: #ff6b6b;
+      text-shadow: 0 0 15px #ff6b6b;
     }
     .battery-bar {
       width: 100%;
       background: #333;
       border-radius: 10px;
-      margin: 15px 0;
-      height: 30px;
+      margin: 20px 0;
+      height: 35px;
       overflow: hidden;
       position: relative;
     }
     .battery-fill {
       height: 100%;
-      background: limegreen;
       width: 0%;
-      text-align: center;
-      line-height: 30px;
+      line-height: 35px;
       color: #000;
       font-weight: bold;
-      transition: width 0.5s;
-      animation: pulse 2s infinite;
+      text-align: center;
+      border-radius: 8px;
+      transition: width 1s ease, background 0.5s;
     }
-    /* Shimmer effect when charging */
-    .charging::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(120deg, transparent, rgba(255,255,255,0.7), transparent);
-      animation: shimmer 2s infinite;
+    .battery-fill.charging {
+      animation: stripeMove 2s linear infinite;
+      background: repeating-linear-gradient(
+        -45deg,
+        #00ffcc,
+        #00ffcc 10px,
+        #0099ff 10px,
+        #0099ff 20px
+      );
+      color: #fff;
     }
     canvas {
       margin: 20px auto;
@@ -78,34 +86,14 @@
       background: rgba(255,255,255,0.1);
       border-radius: 10px;
       padding: 10px;
-      animation: fadeInUp 1.5s ease-in-out;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
 
-    /* 🔹 Animations */
-    @keyframes popUp {
-      0% { transform: scale(0.8); opacity: 0; }
-      100% { transform: scale(1); opacity: 1; }
-    }
-    @keyframes fadeInDown {
-      0% { transform: translateY(-30px); opacity: 0; }
-      100% { transform: translateY(0); opacity: 1; }
-    }
-    @keyframes fadeInUp {
-      0% { transform: translateY(30px); opacity: 0; }
-      100% { transform: translateY(0); opacity: 1; }
-    }
-    @keyframes glow {
-      0% { text-shadow: 0 0 5px #fff, 0 0 10px #00ffcc; }
-      100% { text-shadow: 0 0 20px #00ffcc, 0 0 30px #00ffcc; }
-    }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
-    @keyframes shimmer {
-      0% { left: -100%; }
-      100% { left: 100%; }
-    }
+    /* Animations */
+    @keyframes popUp { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes fadeInDown { 0% { transform: translateY(-30px); opacity:0; } 100% { transform: translateY(0); opacity:1; } }
+    @keyframes glowPulse { 0% { text-shadow:0 0 5px #00ffcc,0 0 15px #00ffcc;} 100% { text-shadow:0 0 20px #00ffcc,0 0 40px #00ffcc;} }
+    @keyframes stripeMove { 0%{background-position:0 0;}100%{background-position:40px 0;} }
   </style>
 </head>
 <body>
@@ -120,6 +108,7 @@
   </div>
 
   <canvas id="batteryChart" width="400" height="200"></canvas>
+  <canvas id="rateChart" width="400" height="200"></canvas>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
@@ -137,38 +126,31 @@
       appId: "YOUR_APP_ID"
     };
 
-    // Initialize Firebase
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Chart.js setup
-    const ctx = document.getElementById('batteryChart').getContext('2d');
-    const batteryChart = new Chart(ctx, {
+    // Battery Chart
+    const ctxBattery = document.getElementById('batteryChart').getContext('2d');
+    const batteryChart = new Chart(ctxBattery, {
       type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Battery %',
-          data: [],
-          borderColor: '#00ffcc',
-          backgroundColor: 'rgba(0,255,204,0.2)',
-          fill: true,
-          tension: 0.4
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: { title: { display: true, text: 'Time' } },
-          y: { title: { display: true, text: 'Battery %' }, min: 0, max: 100 }
-        }
-      }
+      data: { labels: [], datasets: [{ label: 'Battery %', data: [], borderColor: '#00ffcc', backgroundColor: 'rgba(0,255,204,0.2)', fill: true, tension:0.4 }] },
+      options: { responsive:true, scales:{ x:{ title:{display:true,text:'Time'} }, y:{ min:0,max:100,title:{display:true,text:'Battery %'}}}}
     });
 
-    // Update UI when Firebase data changes
+    // Charging Rate Chart
+    const ctxRate = document.getElementById('rateChart').getContext('2d');
+    const rateChart = new Chart(ctxRate, {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Charging Rate (%/s)', data: [], borderColor: '#ffeb3b', backgroundColor:'rgba(255,235,59,0.2)', fill:true, tension:0.4 }] },
+      options: { responsive:true, scales:{ x:{ title:{display:true,text:'Time'} }, y:{ title:{display:true,text:'Rate (%/s)'}}}}
+    });
+
+    let previousBattery = 0;
+    let previousTime = Date.now();
+
     db.ref("batteryStatus").on("value", (snapshot) => {
       const data = snapshot.val();
-      if (data) {
+      if(data){
         let battery = data.battery || 0;
         let voltage = data.voltage || 0;
         let charging = data.charging;
@@ -177,30 +159,33 @@
         const batteryFill = document.getElementById("batteryFill");
         batteryFill.style.width = battery + "%";
         batteryFill.textContent = battery + "%";
+        if(charging) batteryFill.classList.add("charging");
+        else batteryFill.classList.remove("charging");
 
-        // Add shimmer if charging
-        const bar = document.querySelector(".battery-bar");
-        if (charging) {
-          bar.classList.add("charging");
-        } else {
-          bar.classList.remove("charging");
-        }
-
-        // Update voltage
+        // Update voltage and status
         document.getElementById("voltage").innerText = voltage.toFixed(2) + " V";
+        const statusEl = document.getElementById("status");
+        if(charging){ statusEl.innerText="⚡ Charging"; statusEl.className="status charging"; }
+        else{ statusEl.innerText="🔋 Not Charging"; statusEl.className="status not-charging"; }
 
-        // Update status
-        document.getElementById("status").innerText = charging ? "⚡ Charging" : "🔋 Not Charging";
-
-        // Update chart
+        // Update battery chart
         const now = new Date().toLocaleTimeString();
         batteryChart.data.labels.push(now);
         batteryChart.data.datasets[0].data.push(battery);
-        if (batteryChart.data.labels.length > 20) {
-          batteryChart.data.labels.shift();
-          batteryChart.data.datasets[0].data.shift();
-        }
+        if(batteryChart.data.labels.length>20){ batteryChart.data.labels.shift(); batteryChart.data.datasets[0].data.shift(); }
         batteryChart.update();
+
+        // Charging rate
+        const currentTime = Date.now();
+        const deltaT = (currentTime - previousTime)/1000;
+        const rate = deltaT>0 ? (battery - previousBattery)/deltaT : 0;
+        rateChart.data.labels.push(now);
+        rateChart.data.datasets[0].data.push(rate);
+        if(rateChart.data.labels.length>20){ rateChart.data.labels.shift(); rateChart.data.datasets[0].data.shift(); }
+        rateChart.update();
+
+        previousBattery = battery;
+        previousTime = currentTime;
       }
     });
   </script>
