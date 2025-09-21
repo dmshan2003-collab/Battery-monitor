@@ -1,37 +1,127 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🔋 Battery Monitor</title>
+  <title>Battery Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: linear-gradient(135deg, #74ebd5, #9face6);
-      color: white;
       text-align: center;
-      padding: 20px;
+      background: #f5f7fa;
+      color: #333;
     }
-    h1 { font-size: 2em; margin-bottom: 20px; }
-    .card {
-      background: rgba(0,0,0,0.4);
-      padding: 20px;
-      border-radius: 15px;
-      display: inline-block;
+    h1 { margin-top: 20px; }
+    .battery {
+      width: 200px;
+      height: 80px;
+      border: 5px solid #333;
+      border-radius: 8px;
+      position: relative;
+      margin: 20px auto;
+      background: #fff;
     }
-    iframe {
-      margin-top: 20px;
-      border-radius: 10px;
-      box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+    .battery::after {
+      content: '';
+      width: 20px;
+      height: 30px;
+      background: #333;
+      position: absolute;
+      top: 20px;
+      right: -25px;
+      border-radius: 4px;
+    }
+    .battery-level {
+      height: 100%;
+      background: linear-gradient(to right, #00c853, #b2ff59);
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.5s ease-in-out;
+    }
+    .reading {
+      font-size: 20px;
+      margin-top: 10px;
+    }
+    canvas {
+      max-width: 600px;
+      margin: 30px auto;
     }
   </style>
 </head>
 <body>
-  <h1>🔋 Live Battery Percentage Monitor</h1>
-  <div class="card">
-    <!-- ThingSpeak Graph Embed -->
-    <iframe width="600" height="400" 
-      src="https://thingspeak.com/channels/3083955/charts/1?bgcolor=%23111111&color=%23ffffff&dynamic=true&results=60&type=line&title=Battery+Percentage">
-    </iframe>
+  <h1>🔋 ESP8266 Battery Monitor</h1>
+  <div class="battery">
+    <div class="battery-level" id="batteryLevel"></div>
   </div>
+  <div class="reading">
+    Voltage: <span id="voltage">--</span> V <br>
+    Battery: <span id="percentage">--</span> %
+  </div>
+
+  <canvas id="voltageChart"></canvas>
+
+  <script>
+    // Replace with your ThingSpeak channel + API key
+    const channelID = "3083993";
+    const readAPIKey = "SLUUJSL2LYF0X3EB";
+
+    const voltageEl = document.getElementById("voltage");
+    const percentageEl = document.getElementById("percentage");
+    const batteryLevel = document.getElementById("batteryLevel");
+
+    // Chart.js setup
+    const ctx = document.getElementById("voltageChart").getContext("2d");
+    const voltageChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          label: "Battery Voltage (V)",
+          data: [],
+          borderColor: "#0077ff",
+          borderWidth: 2,
+          fill: false
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: "Time" } },
+          y: { title: { display: true, text: "Voltage (V)" }, min: 0, max: 8 }
+        }
+      }
+    });
+
+    async function fetchData() {
+      try {
+        // Get last 10 results from ThingSpeak
+        const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=10`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.feeds && data.feeds.length > 0) {
+          const last = data.feeds[data.feeds.length - 1];
+          const voltage = parseFloat(last.field1);
+          const percentage = parseFloat(last.field2);
+
+          // Update display
+          voltageEl.textContent = voltage.toFixed(2);
+          percentageEl.textContent = percentage.toFixed(1);
+          batteryLevel.style.width = percentage + "%";
+
+          // Update chart
+          voltageChart.data.labels = data.feeds.map(feed => new Date(feed.created_at).toLocaleTimeString());
+          voltageChart.data.datasets[0].data = data.feeds.map(feed => parseFloat(feed.field1));
+          voltageChart.update();
+        }
+      } catch (err) {
+        console.error("Error fetching ThingSpeak data:", err);
+      }
+    }
+
+    // Refresh every 20 seconds
+    fetchData();
+    setInterval(fetchData, 20000);
+  </script>
 </body>
 </html>
